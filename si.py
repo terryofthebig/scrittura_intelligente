@@ -1,8 +1,6 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
 from textstat import flesch_reading_ease
 import re
 from collections import Counter
@@ -68,7 +66,7 @@ with st.sidebar:
     la tua scrittura sviluppando diverse intelligenze.
     """)
 
-# Funzione per calcolare la diversità lessicale (sostituisce lexical_diversity)
+# Funzione per calcolare la diversità lessicale
 def calcola_diversita_lessicale(testo):
     """Calcola la diversità lessicale come rapporto tra parole uniche e totali"""
     # Usa una tokenizzazione semplice se NLTK ha problemi
@@ -354,7 +352,7 @@ with tab2:
         with col2:
             st.subheader("Composizione del Testo")
             
-            # Grafico a torta per parti del discorso
+            # Calcolo delle percentuali per le parti del discorso
             labels = ['Sostantivi', 'Verbi', 'Aggettivi', 'Avverbi', 'Altro']
             sizes = [
                 analisi['sostantivi'],
@@ -364,10 +362,18 @@ with tab2:
                 analisi['parole_totali'] - (analisi['sostantivi'] + analisi['verbi'] + analisi['aggettivi'] + analisi['avverbi'])
             ]
             
-            fig, ax = plt.subplots()
-            ax.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=90)
-            ax.axis('equal')
-            st.pyplot(fig)
+            # Creazione di un DataFrame per visualizzare i dati
+            df_composizione = pd.DataFrame({
+                'Parte del Discorso': labels,
+                'Conteggio': sizes,
+                'Percentuale': [f"{(size/analisi['parole_totali'])*100:.1f}%" for size in sizes]
+            })
+            
+            # Visualizzazione come tabella
+            st.dataframe(df_composizione, use_container_width=True)
+            
+            # Visualizzazione alternativa come bar chart
+            st.bar_chart(df_composizione.set_index('Parte del Discorso')['Conteggio'])
         
         # Stile dominante
         st.subheader("Stile di Scrittura Dominante")
