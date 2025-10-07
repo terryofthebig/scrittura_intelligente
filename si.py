@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from textstat import flesch_reading_ease
 import re
 from collections import Counter
 import nltk
@@ -66,14 +65,49 @@ with st.sidebar:
     la tua scrittura sviluppando diverse intelligenze.
     """)
 
+# Funzione per calcolare la leggibilità (sostituisce textstat)
+def calcola_leggibilita(testo):
+    """
+    Calcola un indice di leggibilità semplificato basato su:
+    - Lunghezza media delle frasi
+    - Lunghezza media delle parole
+    - Complessità del vocabolario
+    """
+    # Tokenizzazione
+    try:
+        parole = word_tokenize(re.sub(r'[^\w\s]', '', testo))
+        frasi = sent_tokenize(testo)
+    except:
+        # Fallback con regex
+        parole = re.findall(r'\b\w+\b', testo)
+        frasi = [f for f in re.split(r'[.!?]+', testo) if f.strip()]
+    
+    if len(parole) == 0 or len(frasi) == 0:
+        return 50  # Valore neutro
+    
+    # Lunghezza media delle frasi
+    lunghezza_media_frasi = len(parole) / len(frasi)
+    
+    # Lunghezza media delle parole
+    lunghezza_media_parole = sum(len(parola) for parola in parole) / len(parole)
+    
+    # Percentuale di parole complesse (più di 6 lettere)
+    parole_complesse = sum(1 for parola in parole if len(parola) > 6)
+    percentuale_complesse = parole_complesse / len(parole)
+    
+    # Calcolo indice di leggibilità semplificato
+    # Frasi più brevi e parole più corte = leggibilità più alta
+    leggibilita = 100 - (lunghezza_media_frasi * 2) - (lunghezza_media_parole * 10) - (percentuale_complesse * 50)
+    
+    # Mantieni il valore tra 0 e 100
+    return max(0, min(100, leggibilita))
+
 # Funzione per calcolare la diversità lessicale
 def calcola_diversita_lessicale(testo):
     """Calcola la diversità lessicale come rapporto tra parole uniche e totali"""
-    # Usa una tokenizzazione semplice se NLTK ha problemi
     try:
         parole = word_tokenize(re.sub(r'[^\w\s]', '', testo.lower()))
     except:
-        # Fallback: tokenizzazione semplice
         parole = re.findall(r'\b\w+\b', testo.lower())
     
     if len(parole) == 0:
@@ -86,7 +120,6 @@ def tokenizza_testo(testo):
     try:
         return word_tokenize(testo)
     except:
-        # Fallback: tokenizzazione semplice con regex
         return re.findall(r'\b\w+\b', testo)
 
 def conta_frasi(testo):
@@ -94,7 +127,6 @@ def conta_frasi(testo):
     try:
         return len(sent_tokenize(testo))
     except:
-        # Fallback: conta frasi basate su punteggiatura
         return len([f for f in re.split(r'[.!?]+', testo) if f.strip()])
 
 def analizza_pos(parole):
@@ -107,7 +139,6 @@ def analizza_pos(parole):
         sostantivi = len([word for word, pos in tagged if pos in ['NN', 'NNS', 'NNP', 'NNPS']])
         return aggettivi, avverbi, verbi, sostantivi
     except:
-        # Fallback: stima approssimativa
         return len(parole) // 10, len(parole) // 20, len(parole) // 5, len(parole) // 3
 
 # Funzioni di analisi del testo
@@ -132,18 +163,15 @@ def analizza_stile(testo):
     # Analisi POS (Part-of-Speech)
     aggettivi, avverbi, verbi, sostantivi = analizza_pos(parole)
     
-    # Leggibilità
-    try:
-        leggibilita = flesch_reading_ease(testo)
-    except:
-        leggibilita = 60  # Valore di default
+    # Leggibilità (usando la nostra funzione)
+    leggibilita = calcola_leggibilita(testo)
     
     # Complessità sintattica (parole per frase)
     complessita_sintattica = lunghezza_media_frasi
     
     # Tono (analisi semplificata)
-    parole_pos_lista = ['buono', 'bello', 'fantastico', 'eccellente', 'meraviglioso', 'positivo', 'felice', 'gioia', 'bene', 'perfetto']
-    parole_neg_lista = ['cattivo', 'brutto', 'terribile', 'orribile', 'pessimo', 'negativo', 'triste', 'dolore', 'male', 'difettoso']
+    parole_pos_lista = ['buono', 'bello', 'fantastico', 'eccellente', 'meraviglioso', 'positivo', 'felice', 'gioia', 'bene', 'perfetto', 'amore', 'successo']
+    parole_neg_lista = ['cattivo', 'brutto', 'terribile', 'orribile', 'pessimo', 'negativo', 'triste', 'dolore', 'male', 'difettoso', 'odio', 'fallimento']
     
     parole_positive = sum(1 for word in parole if word.lower() in parole_pos_lista)
     parole_negative = sum(1 for word in parole if word.lower() in parole_neg_lista)
@@ -218,7 +246,7 @@ def strategie_intelligenze_multiple(stile_dominante, analisi):
     
     # Intelligenza Spaziale
     strategie['Spaziale'] = [
-        "Usa metafore visive nelle tue descrizioni",
+        "Usa metafore visive nelle tue descrizions",
         "Disegna le scene prima di descriverle",
         "Organizza il testo con una struttura visivamente chiara",
         "Utilizza diagrammi per pianificare la struttura del testo"
@@ -343,7 +371,7 @@ with tab2:
                 "Lunghezza media frasi": f"{analisi['lunghezza_media_frasi']:.1f} parole",
                 "Vocabolario unico": analisi['vocab_unico'],
                 "Ricchezza lessicale": f"{analisi['ricchezza_lessicale']*100:.1f}%",
-                "Livello di leggibilità": f"{analisi['leggibilita']:.1f} (su 100)"
+                "Indice di leggibilità": f"{analisi['leggibilita']:.1f} (su 100)"
             }
             
             for metrica, valore in metriche_base.items():
