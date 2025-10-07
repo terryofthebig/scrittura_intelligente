@@ -3,39 +3,8 @@ import pandas as pd
 import numpy as np
 import re
 from collections import Counter
-import nltk
+import os
 import ssl
-
-# Disabilita verifica SSL per evitare problemi di download
-try:
-    _create_unverified_https_context = ssl._create_unverified_context
-except AttributeError:
-    pass
-else:
-    ssl._create_default_https_context = _create_unverified_https_context
-
-# Download delle risorse NLTK necessarie
-try:
-    nltk.data.find('tokenizers/punkt')
-except LookupError:
-    nltk.download('punkt')
-
-try:
-    nltk.data.find('taggers/averaged_perceptron_tagger')
-except LookupError:
-    nltk.download('averaged_perceptron_tagger')
-
-try:
-    nltk.data.find('tokenizers/punkt_tab')
-except LookupError:
-    try:
-        nltk.download('punkt_tab')
-    except:
-        # Se punkt_tab non è disponibile, usa punkt normale
-        pass
-
-from nltk.tokenize import sent_tokenize, word_tokenize
-from nltk.tag import pos_tag
 
 # Configurazione iniziale
 st.set_page_config(
@@ -51,6 +20,41 @@ Analizza il tuo stile di scrittura personale e ricevi strategie di miglioramento
 personalizzate basate sulle **intelligenze multiple** di Howard Gardner.
 """)
 
+# Tentativo di import NLTK con gestione errori
+try:
+    import nltk
+    
+    # Disabilita verifica SSL per evitare problemi di download
+    try:
+        _create_unverified_https_context = ssl._create_unverified_context
+    except AttributeError:
+        pass
+    else:
+        ssl._create_default_https_context = _create_unverified_https_context
+
+    # Download delle risorse NLTK necessarie
+    try:
+        nltk.data.find('tokenizers/punkt')
+    except LookupError:
+        nltk.download('punkt')
+
+    try:
+        nltk.data.find('taggers/averaged_perceptron_tagger')
+    except LookupError:
+        nltk.download('averaged_perceptron_tagger')
+
+    from nltk.tokenize import sent_tokenize, word_tokenize
+    from nltk.tag import pos_tag
+    
+    nltk_available = True
+    
+except ImportError:
+    st.error("⚠️ NLTK non è disponibile. L'analisi sarà limitata.")
+    nltk_available = False
+except Exception as e:
+    st.warning(f"⚠️ Problema con NLTK: {str(e)}. Usando metodi alternativi.")
+    nltk_available = False
+
 # Sidebar per informazioni
 with st.sidebar:
     st.header("Informazioni")
@@ -60,123 +64,73 @@ with st.sidebar:
     - **Struttura delle frasi e paragrafi**
     - **Tono e stile narrativo**
     - **Coerenza e coesione testuale**
-    
-    Basandoti sui risultati, riceverai strategie personalizzate per migliorare 
-    la tua scrittura sviluppando diverse intelligenze.
     """)
+    
+    if not nltk_available:
+        st.error("Modalità limitata: NLTK non disponibile")
 
-# Funzione per calcolare la leggibilità (sostituisce textstat)
-def calcola_leggibilita(testo):
-    """
-    Calcola un indice di leggibilità semplificato basato su:
-    - Lunghezza media delle frasi
-    - Lunghezza media delle parole
-    - Complessità del vocabolario
-    """
-    # Tokenizzazione
-    try:
-        parole = word_tokenize(re.sub(r'[^\w\s]', '', testo))
-        frasi = sent_tokenize(testo)
-    except:
-        # Fallback con regex
-        parole = re.findall(r'\b\w+\b', testo)
-        frasi = [f for f in re.split(r'[.!?]+', testo) if f.strip()]
+# Funzioni di fallback se NLTK non è disponibile
+def tokenizza_testo_semplice(testo):
+    """Tokenizzazione semplice senza NLTK"""
+    return re.findall(r'\b\w+\b', testo.lower())
+
+def conta_frasi_semplice(testo):
+    """Conta frasi senza NLTK"""
+    return len([f for f in re.split(r'[.!?]+', testo) if f.strip()])
+
+def calcola_leggibilita_semplice(testo):
+    """Calcola leggibilità senza NLTK"""
+    parole = tokenizza_testo_semplice(testo)
+    frasi = conta_frasi_semplice(testo)
     
-    if len(parole) == 0 or len(frasi) == 0:
-        return 50  # Valore neutro
+    if len(parole) == 0 or frasi == 0:
+        return 50
     
-    # Lunghezza media delle frasi
-    lunghezza_media_frasi = len(parole) / len(frasi)
+    lunghezza_media_frasi = len(parole) / frasi
+    lunghezza_media_parole = sum(len(p) for p in parole) / len(parole)
     
-    # Lunghezza media delle parole
-    lunghezza_media_parole = sum(len(parola) for parola in parole) / len(parole)
-    
-    # Percentuale di parole complesse (più di 6 lettere)
-    parole_complesse = sum(1 for parola in parole if len(parola) > 6)
-    percentuale_complesse = parole_complesse / len(parole)
-    
-    # Calcolo indice di leggibilità semplificato
-    # Frasi più brevi e parole più corte = leggibilità più alta
-    leggibilita = 100 - (lunghezza_media_frasi * 2) - (lunghezza_media_parole * 10) - (percentuale_complesse * 50)
-    
-    # Mantieni il valore tra 0 e 100
+    leggibilita = 100 - (lunghezza_media_frasi * 1.5) - (lunghezza_media_parole * 8)
     return max(0, min(100, leggibilita))
 
-# Funzione per calcolare la diversità lessicale
-def calcola_diversita_lessicale(testo):
-    """Calcola la diversità lessicale come rapporto tra parole uniche e totali"""
-    try:
-        parole = word_tokenize(re.sub(r'[^\w\s]', '', testo.lower()))
-    except:
-        parole = re.findall(r'\b\w+\b', testo.lower())
-    
-    if len(parole) == 0:
-        return 0
-    return len(set(parole)) / len(parole)
-
-# Funzione di tokenizzazione robusta
-def tokenizza_testo(testo):
-    """Tokenizza il testo con fallback se NLTK ha problemi"""
-    try:
-        return word_tokenize(testo)
-    except:
-        return re.findall(r'\b\w+\b', testo)
-
-def conta_frasi(testo):
-    """Conta le frasi con fallback se NLTK ha problemi"""
-    try:
-        return len(sent_tokenize(testo))
-    except:
-        return len([f for f in re.split(r'[.!?]+', testo) if f.strip()])
-
-def analizza_pos(parole):
-    """Analizza le parti del discorso con fallback"""
-    try:
-        tagged = pos_tag(parole)
-        aggettivi = len([word for word, pos in tagged if pos in ['JJ', 'JJR', 'JJS']])
-        avverbi = len([word for word, pos in tagged if pos in ['RB', 'RBR', 'RBS']])
-        verbi = len([word for word, pos in tagged if pos in ['VB', 'VBD', 'VBG', 'VBN', 'VBP', 'VBZ']])
-        sostantivi = len([word for word, pos in tagged if pos in ['NN', 'NNS', 'NNP', 'NNPS']])
-        return aggettivi, avverbi, verbi, sostantivi
-    except:
-        return len(parole) // 10, len(parole) // 20, len(parole) // 5, len(parole) // 3
-
-# Funzioni di analisi del testo
+# Funzioni principali
 def analizza_stile(testo):
     """Analizza vari aspetti dello stile di scrittura"""
     
-    # Pulizia del testo
-    testo_pulito = re.sub(r'[^\w\s]', '', testo)
+    if nltk_available:
+        try:
+            # Usa NLTK se disponibile
+            parole = word_tokenize(re.sub(r'[^\w\s]', '', testo))
+            frasi_totali = len(sent_tokenize(testo))
+            parole_totali = len(parole)
+            
+            # Analisi POS con NLTK
+            tagged = pos_tag(parole)
+            aggettivi = len([word for word, pos in tagged if pos in ['JJ', 'JJR', 'JJS']])
+            avverbi = len([word for word, pos in tagged if pos in ['RB', 'RBR', 'RBS']])
+            verbi = len([word for word, pos in tagged if pos in ['VB', 'VBD', 'VBG', 'VBN', 'VBP', 'VBZ']])
+            sostantivi = len([word for word, pos in tagged if pos in ['NN', 'NNS', 'NNP', 'NNPS']])
+            
+        except Exception:
+            # Fallback a metodi semplici
+            return analizza_stile_semplice(testo)
+    else:
+        # Usa metodi semplici
+        return analizza_stile_semplice(testo)
     
-    # Metriche di base con fallback
-    parole = tokenizza_testo(testo_pulito)
-    frasi_totali = conta_frasi(testo)
-    parole_totali = len(parole)
-    
-    # Lunghezza media delle frasi
+    # Calcoli comuni
     lunghezza_media_frasi = parole_totali / frasi_totali if frasi_totali > 0 else 0
-    
-    # Vocabolario unico
     vocab_unico = len(set(parole))
-    ricchezza_lessicale = calcola_diversita_lessicale(testo)
+    ricchezza_lessicale = vocab_unico / parole_totali if parole_totali > 0 else 0
+    leggibilita = calcola_leggibilita_semplice(testo)
     
-    # Analisi POS (Part-of-Speech)
-    aggettivi, avverbi, verbi, sostantivi = analizza_pos(parole)
-    
-    # Leggibilità (usando la nostra funzione)
-    leggibilita = calcola_leggibilita(testo)
-    
-    # Complessità sintattica (parole per frase)
-    complessita_sintattica = lunghezza_media_frasi
-    
-    # Tono (analisi semplificata)
-    parole_pos_lista = ['buono', 'bello', 'fantastico', 'eccellente', 'meraviglioso', 'positivo', 'felice', 'gioia', 'bene', 'perfetto', 'amore', 'successo']
-    parole_neg_lista = ['cattivo', 'brutto', 'terribile', 'orribile', 'pessimo', 'negativo', 'triste', 'dolore', 'male', 'difettoso', 'odio', 'fallimento']
+    # Analisi del tono
+    parole_pos_lista = ['buono', 'bello', 'fantastico', 'eccellente', 'meraviglioso', 'positivo', 'felice', 'gioia']
+    parole_neg_lista = ['cattivo', 'brutto', 'terribile', 'orribile', 'pessimo', 'negativo', 'triste', 'dolore']
     
     parole_positive = sum(1 for word in parole if word.lower() in parole_pos_lista)
     parole_negative = sum(1 for word in parole if word.lower() in parole_neg_lista)
-    tono_positivo = parole_positive / len(parole) if parole_totali > 0 else 0
-    tono_negativo = parole_negative / len(parole) if parole_totali > 0 else 0
+    tono_positivo = parole_positive / parole_totali if parole_totali > 0 else 0
+    tono_negativo = parole_negative / parole_totali if parole_totali > 0 else 0
     
     return {
         'parole_totali': parole_totali,
@@ -189,14 +143,53 @@ def analizza_stile(testo):
         'verbi': verbi,
         'sostantivi': sostantivi,
         'leggibilita': leggibilita,
-        'complessita_sintattica': complessita_sintattica,
+        'tono_positivo': tono_positivo,
+        'tono_negativo': tono_negativo
+    }
+
+def analizza_stile_semplice(testo):
+    """Analisi semplificata senza NLTK"""
+    parole = tokenizza_testo_semplice(testo)
+    frasi_totali = conta_frasi_semplice(testo)
+    parole_totali = len(parole)
+    
+    lunghezza_media_frasi = parole_totali / frasi_totali if frasi_totali > 0 else 0
+    vocab_unico = len(set(parole))
+    ricchezza_lessicale = vocab_unico / parole_totali if parole_totali > 0 else 0
+    leggibilita = calcola_leggibilita_semplice(testo)
+    
+    # Stime approssimative per parti del discorso
+    aggettivi = len(parole) // 10
+    avverbi = len(parole) // 20
+    verbi = len(parole) // 5
+    sostantivi = len(parole) // 3
+    
+    # Analisi del tono
+    parole_pos_lista = ['buono', 'bello', 'fantastico', 'eccellente', 'meraviglioso', 'positivo', 'felice', 'gioia']
+    parole_neg_lista = ['cattivo', 'brutto', 'terribile', 'orribile', 'pessimo', 'negativo', 'triste', 'dolore']
+    
+    parole_positive = sum(1 for word in parole if word in parole_pos_lista)
+    parole_negative = sum(1 for word in parole if word in parole_neg_lista)
+    tono_positivo = parole_positive / parole_totali if parole_totali > 0 else 0
+    tono_negativo = parole_negative / parole_totali if parole_totali > 0 else 0
+    
+    return {
+        'parole_totali': parole_totali,
+        'frasi_totali': frasi_totali,
+        'lunghezza_media_frasi': lunghezza_media_frasi,
+        'vocab_unico': vocab_unico,
+        'ricchezza_lessicale': ricchezza_lessicale,
+        'aggettivi': aggettivi,
+        'avverbi': avverbi,
+        'verbi': verbi,
+        'sostantivi': sostantivi,
+        'leggibilita': leggibilita,
         'tono_positivo': tono_positivo,
         'tono_negativo': tono_negativo
     }
 
 def determina_stile_dominante(analisi):
     """Determina lo stile di scrittura dominante"""
-    
     punteggi = {
         'narrativo': 0,
         'descrittivo': 0,
@@ -204,158 +197,112 @@ def determina_stile_dominante(analisi):
         'espositivo': 0
     }
     
-    # Narrativo: molti verbi, lunghezza frase media
     if analisi['parole_totali'] > 0:
+        # Narrativo: molti verbi
         punteggi['narrativo'] += analisi['verbi'] / analisi['parole_totali']
         punteggi['narrativo'] += 0.5 if 15 <= analisi['lunghezza_media_frasi'] <= 25 else 0
-    
-    # Descrittivo: molti aggettivi
-    if analisi['parole_totali'] > 0:
+        
+        # Descrittivo: molti aggettivi
         punteggi['descrittivo'] += analisi['aggettivi'] / analisi['parole_totali']
     
-    # Argomentativo: ricchezza lessicale, frasi più lunghe
+    # Argomentativo: ricchezza lessicale
     punteggi['argomentativo'] += analisi['ricchezza_lessicale']
     punteggi['argomentativo'] += 0.5 if analisi['lunghezza_media_frasi'] > 20 else 0
     
-    # Espositivo: equilibrio, buona leggibilità
+    # Espositivo: buona leggibilità
     punteggi['espositivo'] += 1 - abs(70 - analisi['leggibilita']) / 70
     
     return max(punteggi, key=punteggi.get)
 
-# Funzioni per le strategie basate su intelligenze multiple
-def strategie_intelligenze_multiple(stile_dominante, analisi):
-    """Genera strategie personalizzate basate sulle intelligenze multiple"""
+# Strategie per intelligenze multiple
+def strategie_intelligenze_multiple(stile_dominante):
+    strategie = {
+        'Linguistica': [
+            "Amplia il tuo vocabolario leggendo autori di generi diversi",
+            "Esercitati con giochi di parole e cruciverba",
+            "Scrivi piccoli racconti utilizzando parole nuove",
+            "Analizza la struttura di testi che ammiri"
+        ],
+        'Logico-Matematica': [
+            "Organizza i tuoi testi con struttura logica chiara",
+            "Utilizza connettivi logici per legare le idee",
+            "Crea mappe concettuali prima di scrivere",
+            "Supporta le argomentazioni con dati"
+        ],
+        'Spaziale': [
+            "Usa metafore visive nelle descrizioni",
+            "Disegna le scene prima di descriverle",
+            "Organizza il testo con struttura visivamente chiara",
+            "Utilizza diagrammi per pianificare"
+        ]
+    }
     
-    strategie = {}
-    
-    # Intelligenza Linguistica
-    strategie['Linguistica'] = [
-        "Amplia il tuo vocabolario leggendo autori di generi diversi",
-        "Esercitati con giochi di parole e cruciverba",
-        "Scrivi piccoli racconti utilizzando parole nuove ogni giorno",
-        "Analizza la struttura di testi che ammiri"
-    ]
-    
-    # Intelligenza Logico-Matematica
-    strategie['Logico-Matematica'] = [
-        "Organizza i tuoi testi con una struttura logica chiara (introduzione, sviluppo, conclusione)",
-        "Utilizza connettivi logici per legare le idee (pertanto, di conseguenza, inoltre)",
-        "Crea mappe concettuali prima di scrivere",
-        "Supporta le tue argomentazioni con dati e statistiche"
-    ]
-    
-    # Intelligenza Spaziale
-    strategie['Spaziale'] = [
-        "Usa metafore visive nelle tue descrizions",
-        "Disegna le scene prima di descriverle",
-        "Organizza il testo con una struttura visivamente chiara",
-        "Utilizza diagrammi per pianificare la struttura del testo"
-    ]
-    
-    # Intelligenza Corporeo-Cinestetica
-    strategie['Corporeo-Cinestetica'] = [
-        "Scrivi stando in piedi o camminando per stimolare la creatività",
-        "Drammatizza le scene che vuoi descrivere",
-        "Usa un linguaggio che coinvolga i sensi e il movimento",
-        "Prendi brevi pause fisiche durante la scrittura"
-    ]
-    
-    # Intelligenza Musicale
-    strategie['Musicale'] = [
-        "Leggi ad alta voce ciò che scrivi per verificarne il ritmo",
-        "Ascolta musica mentre scrivi per ispirare diversi stati d'animo",
-        "Usa l'allitterazione e l'assonanza per creare effetti sonori",
-        "Presta attenzione al ritmo delle tue frasi"
-    ]
-    
-    # Intelligenza Interpersonale
-    strategie['Interpersonale'] = [
-        "Scrivi pensando al tuo lettore ideale",
-        "Chiedi feedback e impara a incorporare i suggerimenti",
-        "Partecipa a gruppi di scrittura creativa",
-        "Sviluppa dialoghi realistici tra i personaggi"
-    ]
-    
-    # Intelligenza Intrapersonale
-    strategie['Intrapersonale'] = [
-        "Tieni un diario personale per esplorare le tue emozioni",
-        "Rifletti sul tuo processo di scrittura e sui tuoi progressi",
-        "Stabilisci obiettivi di scrittura personali",
-        "Scrivi di esperienze personali per sviluppare autenticità"
-    ]
-    
-    # Intelligenza Naturalistica
-    strategie['Naturalistica'] = [
-        "Osserva e descri dettagliatamente ambienti naturali",
-        "Usa metafore tratte dal mondo naturale",
-        "Studia la struttura di piante e animali per ispirare la struttura del testo",
-        "Scrivi all'aperto per stimolare la creatività"
-    ]
-    
-    # Strategie specifiche per stile dominante
     strategie_specifiche = {
         'narrativo': [
-            "Sviluppa personaggi multidimensionali (Interpersonale)",
-            "Crea una struttura temporale chiara (Logico-Matematica)",
-            "Usa dialoghi vivaci (Linguistica)",
-            "Descrivi ambienti in modo coinvolgente (Spaziale)"
+            "Sviluppa personaggi multidimensionali",
+            "Crea una struttura temporale chiara",
+            "Usa dialoghi vivaci",
+            "Descrivi ambienti in modo coinvolgente"
         ],
         'descrittivo': [
-            "Coinvolgi tutti i sensi nelle descrizioni (Corporeo-Cinestetica)",
-            "Usa similitudini e metafore originali (Spaziale)",
-            "Organizza le descrizioni in modo logico (Logico-Matematica)",
-            "Scegli aggettivi precisi e evocativi (Linguistica)"
+            "Coinvolgi tutti i sensi nelle descrizioni",
+            "Usa similitudini e metafore originali",
+            "Organizza le descrizioni in modo logico",
+            "Scegli aggettivi precisi e evocativi"
         ],
         'argomentativo': [
-            "Struttura logicamente le argomentazioni (Logico-Matematica)",
-            "Anticipa e confuta le obiezioni (Interpersonale)",
-            "Usa un linguaggio preciso e convincente (Linguistica)",
-            "Supporta con esempi concreti (Naturalistica)"
+            "Struttura logicamente le argomentazioni",
+            "Anticipa e confuta le obiezioni",
+            "Usa linguaggio preciso e convincente",
+            "Supporta con esempi concreti"
         ],
         'espositivo': [
-            "Organizza le informazioni in modo chiaro (Logico-Matematica)",
-            "Usa analogie per spiegare concetti complessi (Spaziale)",
-            "Adatta il linguaggio al pubblico (Interpersonale)",
-            "Mantieni un tono equilibrato e oggettivo (Intrapersonale)"
+            "Organizza informazioni in modo chiaro",
+            "Usa analogie per spiegare concetti complessi",
+            "Adatta il linguaggio al pubblico",
+            "Mantieni tono equilibrato e oggettivo"
         ]
     }
     
     return strategie, strategie_specifiche.get(stile_dominante, [])
 
 # Interfaccia principale
-tab1, tab2, tab3 = st.tabs(["📝 Analisi Testo", "📊 Risultati Dettagliati", "🎯 Strategie Personalizzate"])
+tab1, tab2, tab3 = st.tabs(["📝 Analisi Testo", "📊 Risultati", "🎯 Strategie"])
 
 with tab1:
     st.header("Inserisci il tuo testo")
     
-    testo_esempio = """La città si svegliava lentamente sotto un cielo color pesca. Le prime luci del mattino accarezzavano i tetti delle case, dipingendo ombre lunghe e sottili sui marciapiedi ancora deserti. Marco camminava a passi lenti, assaporando il silenzio irreale che precede il caos della giornata. Ogni respiro gli sembrava più profondo, ogni pensiero più chiaro. In quei momenti di tranquillità, riusciva finalmente ad ascoltare la voce sottile della sua anima, quella che durante il giorno veniva sommersa dalle richieste, dalle scadenze, dalle aspettative degli altri."""
+    testo_esempio = """La città si svegliava lentamente sotto un cielo color pesca. Le prime luci del mattino accarezzavano i tetti delle case, dipingendo ombre lunghe e sottili sui marciapiedi ancora deserti. Marco camminava a passi lenti, assaporando il silenzio irreale che precede il caos della giornata. Ogni respiro gli sembrava più profondo, ogni pensiero più chiaro. In quei momenti di tranquillità, riusciva finalmente ad ascoltare la voce sottile della sua anima."""
     
     testo_utente = st.text_area(
-        "Incolla il tuo testo qui sotto (minimo 50 parole per un'analisi accurata):",
+        "Incolla il tuo testo qui sotto (minimo 50 parole):",
         value=testo_esempio,
         height=300
     )
     
     if st.button("Analizza il mio stile"):
-        parole_count = len(tokenizza_testo(testo_utente))
-        if parole_count < 50:
-            st.warning(f"Inserisci un testo più lungo (almeno 50 parole, attuali: {parole_count}) per un'analisi accurata.")
+        if nltk_available:
+            parole_count = len(word_tokenize(testo_utente))
         else:
-            with st.spinner("Analizzando il tuo stile di scrittura..."):
+            parole_count = len(tokenizza_testo_semplice(testo_utente))
+            
+        if parole_count < 50:
+            st.warning(f"Testo troppo breve ({parole_count} parole). Inserisci almeno 50 parole.")
+        else:
+            with st.spinner("Analizzando il tuo stile..."):
                 analisi = analizza_stile(testo_utente)
                 stile_dominante = determina_stile_dominante(analisi)
                 
-                # Salva i risultati nella session state
                 st.session_state.analisi = analisi
                 st.session_state.stile_dominante = stile_dominante
                 
-            st.success("Analisi completata! Vai alla tab 'Risultati Dettagliati'.")
+            st.success("Analisi completata!")
 
 with tab2:
     st.header("Risultati dell'Analisi")
     
     if 'analisi' not in st.session_state:
-        st.info("Inserisci un testo nella tab 'Analisi Testo' per vedere i risultati.")
+        st.info("Inserisci un testo per vedere i risultati.")
     else:
         analisi = st.session_state.analisi
         stile_dominante = st.session_state.stile_dominante
@@ -364,111 +311,59 @@ with tab2:
         
         with col1:
             st.subheader("Metriche di Base")
-            
-            metriche_base = {
+            metriche = {
                 "Parole totali": analisi['parole_totali'],
                 "Frasi totali": analisi['frasi_totali'],
                 "Lunghezza media frasi": f"{analisi['lunghezza_media_frasi']:.1f} parole",
                 "Vocabolario unico": analisi['vocab_unico'],
                 "Ricchezza lessicale": f"{analisi['ricchezza_lessicale']*100:.1f}%",
-                "Indice di leggibilità": f"{analisi['leggibilita']:.1f} (su 100)"
+                "Leggibilità": f"{analisi['leggibilita']:.1f}/100"
             }
             
-            for metrica, valore in metriche_base.items():
-                st.metric(metrica, valore)
+            for k, v in metriche.items():
+                st.metric(k, v)
         
         with col2:
-            st.subheader("Composizione del Testo")
-            
-            # Calcolo delle percentuali per le parti del discorso
-            labels = ['Sostantivi', 'Verbi', 'Aggettivi', 'Avverbi', 'Altro']
-            sizes = [
-                analisi['sostantivi'],
-                analisi['verbi'],
-                analisi['aggettivi'],
-                analisi['avverbi'],
-                analisi['parole_totali'] - (analisi['sostantivi'] + analisi['verbi'] + analisi['aggettivi'] + analisi['avverbi'])
-            ]
-            
-            # Creazione di un DataFrame per visualizzare i dati
-            df_composizione = pd.DataFrame({
-                'Parte del Discorso': labels,
-                'Conteggio': sizes,
-                'Percentuale': [f"{(size/analisi['parole_totali'])*100:.1f}%" for size in sizes]
+            st.subheader("Composizione")
+            df = pd.DataFrame({
+                'Tipo': ['Sostantivi', 'Verbi', 'Aggettivi', 'Avverbi'],
+                'Quantità': [
+                    analisi['sostantivi'],
+                    analisi['verbi'], 
+                    analisi['aggettivi'],
+                    analisi['avverbi']
+                ]
             })
-            
-            # Visualizzazione come tabella
-            st.dataframe(df_composizione, use_container_width=True)
-            
-            # Visualizzazione alternativa come bar chart
-            st.bar_chart(df_composizione.set_index('Parte del Discorso')['Conteggio'])
+            st.bar_chart(df.set_index('Tipo'))
         
-        # Stile dominante
-        st.subheader("Stile di Scrittura Dominante")
-        
-        stili = {
-            'narrativo': "📖 Narrativo",
-            'descrittivo': "🎨 Descrittivo", 
-            'argomentativo': "💭 Argomentativo",
-            'espositivo': "📚 Espositivo"
+        st.subheader(f"Stile Dominante: {stile_dominante.capitalize()}")
+        descrizioni = {
+            'narrativo': "Focus su eventi e sequenze temporali",
+            'descrittivo': "Focus su dettagli sensoriali e descrizioni", 
+            'argomentativo': "Focus su logica e persuasione",
+            'espositivo': "Focus su chiarezza e organizzazione"
         }
-        
-        st.markdown(f"**Il tuo stile dominante è:** {stili[stile_dominante]}")
-        
-        descrizioni_stili = {
-            'narrativo': "Lo stile narrativo si concentra sul racconto di eventi, spesso in sequenza temporale, con attenzione ai personaggi e alle loro azioni.",
-            'descrittivo': "Lo stile descrittivo si focalizza sulla rappresentazione dettagliata di persone, luoghi o oggetti, utilizzando molti aggettivi e avverbi.",
-            'argomentativo': "Lo stile argomentativo presenta tesi supportate da ragionamenti logici, dati e prove, con l'obiettivo di persuadere il lettore.",
-            'espositivo': "Lo stile espositivo fornisce informazioni in modo chiaro e organizzato, spiegando concetti senza necessariamente persuadere."
-        }
-        
-        st.info(descrizioni_stili[stile_dominante])
+        st.info(descrizioni.get(stile_dominante, ""))
 
 with tab3:
     st.header("Strategie Personalizzate")
     
     if 'analisi' not in st.session_state:
-        st.info("Inserisci un testo nella tab 'Analisi Testo' per ricevere strategie personalizzate.")
+        st.info("Analizza un testo per vedere le strategie.")
     else:
-        analisi = st.session_state.analisi
         stile_dominante = st.session_state.stile_dominante
+        strategie, specifiche = strategie_intelligenze_multiple(stile_dominante)
         
-        strategie, strategie_specifiche = strategie_intelligenze_multiple(stile_dominante, analisi)
-        
-        st.subheader("Strategie per Sviluppare Tutte le Intelligenze")
-        
+        st.subheader("Strategie per Inteligenze Multiple")
         for intelligenza, consigli in strategie.items():
             with st.expander(f"🧠 {intelligenza}"):
-                for consiglio in consigli:
-                    st.write(f"• {consiglio}")
+                for c in consigli:
+                    st.write(f"• {c}")
         
-        st.subheader(f"Strategie Specifiche per lo Stile {stile_dominante.capitalize()}")
-        
-        for strategia in strategie_specifiche:
-            st.write(f"• {strategia}")
-        
-        # Consigli personalizzati basati sull'analisi
-        st.subheader("Consigli Personalizzati")
-        
-        if analisi['ricchezza_lessicale'] < 0.5:
-            st.warning("**Amplia il tuo vocabolario:** La ricchezza lessicale è sotto la media. Prova a leggere più generi diversi e a utilizzare un dizionario dei sinonimi.")
-        
-        if analisi['lunghezza_media_frasi'] > 25:
-            st.warning("**Varia la lunghezza delle frasi:** Le tue frasi sono piuttosto lunghe. Prova ad alternare frasi brevi e lunghe per creare ritmo.")
-        
-        if analisi['aggettivi'] / analisi['parole_totali'] < 0.05:
-            st.warning("**Aggiungi più dettagli descrittivi:** Usa più aggettivi per rendere la tua scrittura più vivida e coinvolgente.")
-        
-        if analisi['leggibilita'] < 60:
-            st.warning("**Migliora la leggibilità:** Il tuo testo potrebbe essere difficile da leggere per alcuni. Prova a semplificare frasi complesse e usa un linguaggio più diretto.")
+        st.subheader(f"Strategie per Stile {stile_dominante.capitalize()}")
+        for s in specifiche:
+            st.write(f"• {s}")
 
 # Footer
 st.markdown("---")
-st.markdown(
-    """
-    <div style='text-align: center'>
-        <p>App di Scrittura Intelligente - Sviluppa il tuo stile unico attraverso le intelligenze multiple</p>
-    </div>
-    """,
-    unsafe_allow_html=True
-)
+st.markdown("App di Scrittura Intelligente | Sviluppa il tuo stile unico")
